@@ -63,7 +63,11 @@ struct FetchedInstr
     - remove operations don't preserve order, but O(1)!
 */
 template <typename T>
+#ifdef __GNUC__
 struct __attribute__((packed)) TinyVector
+#elif defined _MSC_VER
+struct __pragma(pack(push, 1)) TinyVector __pragma(pack(pop))
+#endif
 {
     T* Data = NULL;
     u16 Capacity = 0;
@@ -185,7 +189,11 @@ private:
 };
 
 // size should be 16 bytes because I'm to lazy to use mul and whatnot
+#ifdef __GNUC__
 struct __attribute__((packed)) AddressRange
+#elif defined _MSC_VER
+struct __pragma(pack(push, 1)) AddressRange __pragma(pack(pop))
+#endif
 {
     TinyVector<JitBlock*> Blocks;
     u32 Code;

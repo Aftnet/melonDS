@@ -597,20 +597,20 @@ void CompileBlock(ARM* cpu)
         map.erase(existingBlockIt);
     }
 
-    FetchedInstr instrs[Config::JIT_MaxBlockSize];
+    std::vector<FetchedInstr>instrs(Config::JIT_MaxBlockSize);
     int i = 0;
     u32 r15 = cpu->R[15];
 
-    u32 addressRanges[Config::JIT_MaxBlockSize];
-    u32 addressMasks[Config::JIT_MaxBlockSize];
-    memset(addressMasks, 0, Config::JIT_MaxBlockSize * sizeof(u32));
+    std::vector<u32> addressRanges(Config::JIT_MaxBlockSize);
+    std::vector<u32> addressMasks(Config::JIT_MaxBlockSize);
+    memset(addressMasks.data(), 0, Config::JIT_MaxBlockSize * sizeof(u32));
     u32 numAddressRanges = 0;
 
     u32 numLiterals = 0;
-    u32 literalLoadAddrs[Config::JIT_MaxBlockSize];
+    std::vector<u32> literalLoadAddrs(Config::JIT_MaxBlockSize);
     // they are going to be hashed
-    u32 literalValues[Config::JIT_MaxBlockSize];
-    u32 instrValues[Config::JIT_MaxBlockSize];
+    std::vector<u32> literalValues(Config::JIT_MaxBlockSize);
+    std::vector<u32> instrValues(Config::JIT_MaxBlockSize);
     // due to instruction merging i might not reflect the amount of actual instructions
     u32 numInstrs = 0;
 
@@ -835,11 +835,11 @@ void CompileBlock(ARM* cpu)
         bool canCompile = JITCompiler->CanCompile(thumb, instrs[i - 1].Info.Kind);
         bool secondaryFlagReadCond = !canCompile || (instrs[i - 1].BranchFlags & (branch_FollowCondTaken | branch_FollowCondNotTaken));
         if (instrs[i - 1].Info.ReadFlags != 0 || secondaryFlagReadCond)
-            FloodFillSetFlags(instrs, i - 2, !secondaryFlagReadCond ? instrs[i - 1].Info.ReadFlags : 0xF);
+            FloodFillSetFlags(instrs.data(), i - 2, !secondaryFlagReadCond ? instrs[i - 1].Info.ReadFlags : 0xF);
     } while(!instrs[i - 1].Info.EndBlock && i < Config::JIT_MaxBlockSize && !cpu->Halted && (!cpu->IRQ || (cpu->CPSR & 0x80)));
 
-    u32 literalHash = (u32)XXH3_64bits(literalValues, numLiterals * 4);
-    u32 instrHash = (u32)XXH3_64bits(instrValues, numInstrs * 4);
+    u32 literalHash = (u32)XXH3_64bits(literalValues.data(), numLiterals * 4);
+    u32 instrHash = (u32)XXH3_64bits(instrValues.data(), numInstrs * 4);
 
     auto prevBlockIt = RestoreCandidates.find(instrHash);
     JitBlock* prevBlock = NULL;
@@ -890,11 +890,11 @@ void CompileBlock(ARM* cpu)
         block->StartAddr = blockAddr;
         block->StartAddrLocal = localAddr;
 
-        FloodFillSetFlags(instrs, i - 1, 0xF);
+        FloodFillSetFlags(instrs.data(), i - 1, 0xF);
         #if defined(__APPLE__) && defined(__aarch64__)
             pthread_jit_write_protect_np(false);
         #endif
-        block->EntryPoint = JITCompiler->CompileBlock(cpu, thumb, instrs, i);
+        block->EntryPoint = JITCompiler->CompileBlock(cpu, thumb, instrs.data(), i);
         #if defined(__APPLE__) && defined(__aarch64__)
             pthread_jit_write_protect_np(true);
         #endif

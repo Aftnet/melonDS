@@ -297,8 +297,14 @@ bool MapIntoRange(u32 addr, u32 num, u32 offset, u32 size)
         (u64)(MemoryBaseCodeMem + offset), size));
     return R_SUCCEEDED(r);
 #elif defined(_WIN32)
-    bool r = MapViewOfFileEx(MemoryFile, FILE_MAP_READ | FILE_MAP_WRITE, 0, offset, size, dst) == dst;
-    return r;
+    #if defined(_MSC_VER) && _MSC_VER > 1900
+        dst = (u8*)MapViewOfFileFromApp(MemoryFile, FILE_MAP_READ | FILE_MAP_WRITE, offset, size);
+        return dst != nullptr;
+    #else
+        bool r = MapViewOfFileEx(MemoryFile, FILE_MAP_READ | FILE_MAP_WRITE, 0, offset, size, dst) == dst;
+        return r;
+    #endif
+    
 #else
     return mmap(dst, size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, MemoryFile, offset) != MAP_FAILED;
 #endif
@@ -701,25 +707,34 @@ void Init()
 
     u8* basePtr = MemoryBaseCodeMem;
 #elif defined(_WIN32)
-    ExceptionHandlerHandle = AddVectoredExceptionHandler(1, ExceptionHandler);
+    #if !(defined(_MSC_VER) && _MSC_VER > 1900)
+        ExceptionHandlerHandle = AddVectoredExceptionHandler(1, ExceptionHandler);
+    #endif
 
     MemoryFile = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, MemoryTotalSize, NULL);
+    #if defined(_MSC_VER) && _MSC_VER > 1900
+        u8* basePtr = (u8*)MapViewOfFileFromApp(MemoryFile, FILE_MAP_READ | FILE_MAP_WRITE, 0, MemoryTotalSize);
 
-    MemoryBase = (u8*)VirtualAlloc(NULL, AddrSpaceSize*4, MEM_RESERVE, PAGE_READWRITE);
-    VirtualFree(MemoryBase, 0, MEM_RELEASE);
-    // this is incredible hacky
-    // but someone else is trying to go into our address space!
-    // Windows will very likely give them virtual memory starting at the same address
-    // as it is giving us now.
-    // That's why we don't use this address, but instead 4gb inwards
-    // I know this is terrible
-    FastMem9Start = MemoryBase + AddrSpaceSize;
-    FastMem7Start = MemoryBase + AddrSpaceSize*2;
-    MemoryBase = MemoryBase + AddrSpaceSize*3;
+    #else
+        ExceptionHandlerHandle = AddVectoredExceptionHandler(1, ExceptionHandler);
 
-    MapViewOfFileEx(MemoryFile, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, MemoryTotalSize, MemoryBase);
+        MemoryBase = (u8*)VirtualAlloc(NULL, AddrSpaceSize*4, MEM_RESERVE, PAGE_READWRITE);
+        VirtualFree(MemoryBase, 0, MEM_RELEASE);
+        // this is incredible hacky
+        // but someone else is trying to go into our address space!
+        // Windows will very likely give them virtual memory starting at the same address
+        // as it is giving us now.
+        // That's why we don't use this address, but instead 4gb inwards
+        // I know this is terrible
+        FastMem9Start = MemoryBase + AddrSpaceSize;
+        FastMem7Start = MemoryBase + AddrSpaceSize*2;
+        MemoryBase = MemoryBase + AddrSpaceSize*3;
 
-    u8* basePtr = MemoryBase;
+        MapViewOfFileEx(MemoryFile, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, MemoryTotalSize, MemoryBase);
+
+        u8* basePtr = MemoryBase;
+    #endif
+
 #else
     // this used to be allocated with three different mmaps
     // The idea was to give the OS more freedom where to position the buffers, 
@@ -799,8 +814,11 @@ void DeInit()
 #elif defined(_WIN32)
     assert(UnmapViewOfFile(MemoryBase));
     CloseHandle(MemoryFile);
-
+#if defined(_MSC_VER) && _MSC_VER > 1900
+#else
     RemoveVectoredExceptionHandler(ExceptionHandlerHandle);
+#endif
+
 #else
     sigaction(SIGSEGV, &OldSaSegv, nullptr);
 #ifdef __APPLE__

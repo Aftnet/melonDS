@@ -2,6 +2,10 @@
 
 #include "../Config.h"
 
+#ifdef _MSC_VER
+#include "MSVC_ctz.h"
+#endif
+
 using namespace Gen;
 
 namespace ARMJIT
